@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GENITUS "HÄTTE ICH GEKAUFT" BACKTESTER</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root{--bg:#f4f7fb;--surface:#ffffff;--border:#d9e2ec;--accent:#0e7490;--gold:#b45309;--green:#15803d;--red:#b91c1c;--muted:#52606d;--text:#1e293b;--bright:#0f172a;--mono:'Space Mono',monospace;--sans:'Rajdhani',sans-serif;}
+    :root.dark-theme{--bg:#080c10;--surface:#0d1117;--border:#1e2d3d;--accent:#00d4ff;--gold:#f0c040;--green:#00ff88;--red:#ff3b5c;--muted:#7d92a8;--text:#c8d8e8;--bright:#ffffff;}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;min-height:100vh;transition:background .25s,color .25s;}
+    header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:56px;position:sticky;top:0;z-index:200;}
+    .logo{display:flex;align-items:center;gap:12px;}
+    .logo-mark{width:32px;height:32px;border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:14px;color:var(--accent);}
+    .logo-text{font-family:var(--mono);font-size:13px;letter-spacing:3px;color:var(--bright);}
+    .logo-sub{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--muted);display:block;margin-top:1px;}
+    #themeToggleBtn{background:none;border:1px solid var(--border);color:var(--accent);width:30px;height:30px;border-radius:2px;cursor:pointer;font-size:14px;}
+    .cache-badge{font-family:var(--mono);font-size:9px;letter-spacing:1px;padding:3px 8px;border:1px solid var(--accent);color:var(--accent);border-radius:2px;text-transform:uppercase;}
+    .main{max-width:1100px;margin:0 auto;padding:20px;}
+    .panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px 20px;margin-bottom:18px;}
+    .panel h2{font-family:var(--mono);font-size:13px;letter-spacing:1px;color:var(--bright);margin-bottom:14px;text-transform:uppercase;}
+    .ctrl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px;}
+    .ctrl-grid label{display:block;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:5px;letter-spacing:1px;}
+    select,input[type="number"],input[type="text"]{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:9px 10px;outline:none;border-radius:4px;}
+    button.run-btn{background:var(--accent);border:none;color:#fff;font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:11px 24px;border-radius:4px;cursor:pointer;}
+    button.run-btn:hover{opacity:.88;}
+    .result-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px;}
+    @media (max-width:700px){.result-grid{grid-template-columns:1fr;}}
+    .result-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px;text-align:center;}
+    .result-card.winner{border-color:var(--green);box-shadow:0 0 0 1px var(--green) inset;}
+    .result-title{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;}
+    .result-val{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--bright);}
+    .result-sub{font-family:var(--mono);font-size:13px;margin-top:4px;}
+    .result-sub.pos{color:var(--green);}
+    .result-sub.neg{color:var(--red);}
+    .crown{font-size:11px;color:var(--gold);font-family:var(--mono);margin-top:6px;letter-spacing:1px;}
+    .chart-wrap{position:relative;height:340px;}
+    .events-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
+    .events-table th{font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);letter-spacing:1px;}
+    .events-table td{padding:6px 10px;border-bottom:1px solid rgba(125,146,168,0.15);font-family:var(--mono);font-size:12px;}
+    .pitch-box{background:rgba(14,116,144,0.08);border:1px dashed var(--accent);border-radius:8px;padding:16px 18px;font-size:14px;line-height:1.6;margin-bottom:18px;}
+    .pitch-box b{color:var(--accent);}
+    .disclaimer{font-size:10px;color:var(--muted);line-height:1.6;border-top:1px solid var(--border);padding-top:10px;margin-top:14px;}
+    .loading-line{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:center;padding:40px;}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo"><div class="logo-mark">H</div><div><span class="logo-text">GENITUS</span><span class="logo-sub">HÄTTE ICH GEKAUFT · BACKTESTER</span></div></div>
+  <div style="display:flex;align-items:center;gap:10px"><span class="cache-badge" id="cacheBadge">● lädt...</span><button id="themeToggleBtn" title="Toggle theme">🌙</button></div>
+</header>
+<div class="main">
+  <div class="panel">
+    <h2>Simulation einrichten</h2>
+    <div class="ctrl-grid">
+      <div>
+        <label>Unternehmen</label>
+        <select id="symbolSelect"><option>Lade Firmenliste...</option></select>
+      </div>
+      <div>
+        <label>Startkapital (€)</label>
+        <input type="number" id="capitalInput" value="10000" min="100" step="500">
+      </div>
+      <div>
+        <label>Dip-Schwelle (Rücksetzer ab Allzeithoch)</label>
+        <select id="dipThresholdSelect">
+          <option value="5">5%</option>
+          <option value="10" selected>10%</option>
+          <option value="15">15%</option>
+          <option value="20">20%</option>
+        </select>
+      </div>
+    </div>
+    <button class="run-btn" id="runBtn" onclick="runSimulation()">Simulation starten</button>
+  </div>
+
+  <div id="resultsArea" style="display:none">
+    <div class="pitch-box" id="pitchBox"></div>
+    <div class="result-grid" id="resultGrid"></div>
+    <div class="panel">
+      <h2>Kursverlauf &amp; Nachkauf-Zeitpunkte</h2>
+      <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Erkannte Dip-Käufe</h2>
+      <table class="events-table">
+        <thead><tr><th>Datum</th><th>Kurs</th><th>Rücksetzer vom Hoch</th><th>Investiert</th></tr></thead>
+        <tbody id="eventsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; Nachkäufe werden aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital) — alle drei Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. Mindestabstand von 4 Wochen zwischen zwei Dip-Käufen, maximal 10 Dip-Käufe pro Simulation; nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
+  </div>
+</div>
+<script>
+  const BILANZ_DATA_URL = 'https://raw.githubusercontent.com/Babybounce500/genitus-ticker-cache/main/bilanz-data.json';
+  const PRICE_HISTORY_URL = 'https://raw.githubusercontent.com/Babybounce500/genitus-ticker-cache/main/price-history-data.json';
+  (function(){
+    const KEY='genitusTheme:backtester';
+    function applyTheme(t){ document.documentElement.classList.toggle('dark-theme', t==='dark'); localStorage.setItem(KEY,t); const btn=document.getElementById('themeToggleBtn'); if(btn) btn.textContent = t==='dark' ? '☀' : '🌙'; }
+    let saved = localStorage.getItem(KEY) || 'light';
+    applyTheme(saved);
+    document.getElementById('themeToggleBtn').addEventListener('click', function(){ applyTheme(document.documentElement.classList.contains('dark-theme')?'light':'dark'); if(chartInstance) renderChart(lastRun); });
+  })();
+
+  let priceHist = {};
+  let nameMap = {};
+  let chartInstance = null;
+  let lastRun = null;
+
+  async function loadData(){
+    try{
+      const [bRes, pRes] = await Promise.all([fetch(BILANZ_DATA_URL), fetch(PRICE_HISTORY_URL)]);
+      if(!bRes.ok || !pRes.ok) throw new Error('HTTP '+bRes.status+'/'+pRes.status);
+      const bilanz = await bRes.json();
+      priceHist = await pRes.json();
+      Object.entries(bilanz).forEach(([sym,d])=>{ if(d.name) nameMap[sym]=d.name; });
+      const symbols = Object.keys(priceHist).filter(s=>priceHist[s].series && priceHist[s].series.length>50).sort((a,b)=>(nameMap[a]||a).localeCompare(nameMap[b]||b));
+      const sel = document.getElementById('symbolSelect');
+      sel.innerHTML = symbols.map(s=>`<option value="${s}">${nameMap[s]||s} (${s})</option>`).join('');
+      const koIdx = symbols.indexOf('KO');
+      if(koIdx>=0) sel.value='KO';
+      document.getElementById('cacheBadge').textContent = `● ${symbols.length} Firmen bereit`;
+    }catch(e){
+      document.getElementById('cacheBadge').textContent = '● Fehler';
+      document.getElementById('symbolSelect').innerHTML = `<option>Fehler: ${e.message}</option>`;
+    }
+  }
+
+  function fmtEUR(n){ return n.toLocaleString('de-DE',{maximumFractionDigits:0})+' €'; }
+  function fmtPct(n){ return (n>=0?'+':'')+n.toFixed(1)+'%'; }
+
+  function simulate(symbol, capital, dipThresholdPct){
+    const series = priceHist[symbol].series; // [date, close, adjclose]
+    const n = series.length;
+    const firstAdj = series[0][2], lastAdj = series[n-1][2];
+
+    // Strategy 1: Lump sum at start
+    const unitsLump = capital / firstAdj;
+    const valueLump = unitsLump * lastAdj;
+
+    // Strategy 2: Plain weekly DCA across whole window
+    const tranche = capital / n;
+    let unitsDCA = 0;
+    for(let i=0;i<n;i++) unitsDCA += tranche / series[i][2];
+    const valueDCA = unitsDCA * lastAdj;
+
+    // Strategy 3: Dip-buyer -- 50% base DCA + 50% reserved for dip events
+    const baseBudget = capital * 0.5, dipBudget = capital * 0.5;
+    const baseTranche = baseBudget / n;
+    const MAX_DIP_EVENTS = 10, MIN_GAP_WEEKS = 4;
+    const dipTranche = dipBudget / MAX_DIP_EVENTS;
+    let unitsDip = 0, peak = series[0][1], dipEventsUsed = 0, lastDipWeek = -999;
+    const events = [];
+    for(let i=0;i<n;i++){
+      const close = series[i][1], adj = series[i][2];
+      unitsDip += baseTranche / adj;
+      if(close > peak) peak = close;
+      const drawdown = (peak - close) / peak * 100;
+      if(drawdown >= dipThresholdPct && dipEventsUsed < MAX_DIP_EVENTS && (i - lastDipWeek) >= MIN_GAP_WEEKS){
+        unitsDip += dipTranche / adj;
+        dipEventsUsed++; lastDipWeek = i;
+        events.push({ date: series[i][0], close, drawdown, amount: dipTranche });
+      }
+    }
+    if(dipEventsUsed < MAX_DIP_EVENTS){
+      const leftover = (MAX_DIP_EVENTS - dipEventsUsed) * dipTranche;
+      unitsDip += leftover / lastAdj;
+      events.push({ date: series[n-1][0], close: series[n-1][1], drawdown: (peak-series[n-1][1])/peak*100, amount: leftover, leftover: true });
+    }
+    const valueDip = unitsDip * lastAdj;
+
+    return {
+      symbol, series, years: priceHist[symbol].summary.years,
+      lump: { value: valueLump, returnPct: (valueLump/capital-1)*100 },
+      dca: { value: valueDCA, returnPct: (valueDCA/capital-1)*100 },
+      dip: { value: valueDip, returnPct: (valueDip/capital-1)*100 },
+      events, capital, dipThresholdPct,
+    };
+  }
+
+  window.runSimulation = function(){
+    const symbol = document.getElementById('symbolSelect').value;
+    const capital = parseFloat(document.getElementById('capitalInput').value) || 10000;
+    const dipThresholdPct = parseFloat(document.getElementById('dipThresholdSelect').value);
+    if(!priceHist[symbol]) return;
+    const result = simulate(symbol, capital, dipThresholdPct);
+    lastRun = result;
+    renderResults(result);
+  };
+
+  function renderResults(r){
+    document.getElementById('resultsArea').style.display = 'block';
+    const name = nameMap[r.symbol] || r.symbol;
+    const best = [r.lump, r.dca, r.dip].reduce((a,b)=> b.value>a.value?b:a);
+    const diffVsLump = r.dip.value - r.lump.value;
+    document.getElementById('pitchBox').innerHTML = diffVsLump > 0
+      ? `Hätten Sie vor ${r.years} Jahren <b>${fmtEUR(r.capital)}</b> in <b>${name}</b> investiert und bei jedem Rücksetzer von ${r.dipThresholdPct}% nachgekauft, stünden Sie heute bei <b>${fmtEUR(r.dip.value)}</b> — <b>${fmtEUR(diffVsLump)} mehr</b> als bei einer reinen Einmalanlage am selben Starttag.`
+      : `Bei ${name} hätte in diesem ${r.years}-Jahres-Fenster eine Einmalanlage am Start (${fmtEUR(r.lump.value)}) den Dip-Käufer-Ansatz (${fmtEUR(r.dip.value)}) leicht übertroffen — nicht jede Aktie belohnt Nachkäufe gleich stark, das Timing der Rücksetzer entscheidet.`;
+
+    const cards = [
+      { key:'lump', title:'Einmalanlage am Start', r:r.lump },
+      { key:'dca', title:'Sparplan (wöchentlich)', r:r.dca },
+      { key:'dip', title:`Dip-Käufer (ab -${r.dipThresholdPct}%)`, r:r.dip },
+    ];
+    document.getElementById('resultGrid').innerHTML = cards.map(c=>`
+      <div class="result-card ${c.r===best?'winner':''}">
+        <div class="result-title">${c.title}</div>
+        <div class="result-val">${fmtEUR(c.r.value)}</div>
+        <div class="result-sub ${c.r.returnPct>=0?'pos':'neg'}">${fmtPct(c.r.returnPct)}</div>
+        ${c.r===best?'<div class="crown">★ BESTE STRATEGIE</div>':''}
+      </div>
+    `).join('');
+
+    document.getElementById('eventsBody').innerHTML = r.events.map(e=>`
+      <tr><td>${e.date}</td><td>${e.close.toFixed(2)}</td><td style="color:var(--red)">-${e.drawdown.toFixed(1)}%</td><td>${fmtEUR(e.amount)}${e.leftover?' (Restbudget)':''}</td></tr>
+    `).join('') || '<tr><td colspan="4" style="color:var(--muted)">Keine Dip-Käufe in diesem Fenster ausgelöst — Schwelle nie erreicht.</td></tr>';
+
+    renderChart(r);
+  }
+
+  function renderChart(r){
+    const ctx = document.getElementById('priceChart').getContext('2d');
+    if(chartInstance) chartInstance.destroy();
+    const isDark = document.documentElement.classList.contains('dark-theme');
+    const gridColor = isDark ? 'rgba(125,146,168,0.15)' : 'rgba(82,96,109,0.12)';
+    const textColor = isDark ? '#7d92a8' : '#52606d';
+    const labels = r.series.map(p=>p[0]);
+    const prices = r.series.map(p=>p[1]);
+    const dipDates = new Set(r.events.filter(e=>!e.leftover).map(e=>e.date));
+    const pointRadius = labels.map(d=>dipDates.has(d)?6:0);
+    const pointColor = labels.map(d=>dipDates.has(d)?'#b45309':'transparent');
+    chartInstance = new Chart(ctx, {
+      type:'line',
+      data:{ labels, datasets:[{
+        label:(nameMap[r.symbol]||r.symbol)+' Kurs', data:prices, borderColor:'#0e7490', borderWidth:1.5,
+        pointRadius, pointBackgroundColor:pointColor, pointBorderColor:pointColor, pointHoverRadius:7, fill:false, tension:0.1,
+      }]},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ labels:{ color:textColor } }, tooltip:{ callbacks:{ label: ctx=>'Kurs: '+ctx.parsed.y.toFixed(2) } } },
+        scales:{
+          x:{ ticks:{ color:textColor, maxTicksLimit:10 }, grid:{ color:gridColor } },
+          y:{ ticks:{ color:textColor }, grid:{ color:gridColor } },
+        },
+      },
+    });
+  }
+
+  loadData();
+</script>
+</body>
+</html>

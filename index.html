@@ -44,6 +44,11 @@
     .pitch-box b{color:var(--accent);}
     .disclaimer{font-size:10px;color:var(--muted);line-height:1.6;border-top:1px solid var(--border);padding-top:10px;margin-top:14px;}
     .loading-line{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:center;padding:40px;}
+    .tabbar{display:flex;gap:6px;margin-bottom:16px;}
+    .tabbtn{background:var(--surface);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:10px 16px;border-radius:6px;cursor:pointer;}
+    .tabbtn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+    .tabpanel{display:none;} .tabpanel.active{display:block;}
+    .warn-card{border-color:var(--red)!important;box-shadow:0 0 0 1px var(--red) inset;}
   </style>
 </head>
 <body>
@@ -52,48 +57,91 @@
   <div style="display:flex;align-items:center;gap:10px"><span class="cache-badge" id="cacheBadge">● lädt...</span><button id="themeToggleBtn" title="Toggle theme">🌙</button></div>
 </header>
 <div class="main">
-  <div class="panel">
-    <h2>Simulation einrichten</h2>
-    <div class="ctrl-grid">
-      <div>
-        <label>Unternehmen</label>
-        <select id="symbolSelect"><option>Lade Firmenliste...</option></select>
-      </div>
-      <div>
-        <label>Startkapital (€)</label>
-        <input type="number" id="capitalInput" value="10000" min="100" step="500">
-      </div>
-      <div>
-        <label>Dip-Schwelle (Rücksetzer ab Allzeithoch)</label>
-        <select id="dipThresholdSelect">
-          <option value="5">5%</option>
-          <option value="10" selected>10%</option>
-          <option value="15">15%</option>
-          <option value="20">20%</option>
-        </select>
-      </div>
-    </div>
-    <button class="run-btn" id="runBtn" onclick="runSimulation()">Simulation starten</button>
+  <div class="tabbar">
+    <button class="tabbtn active" data-tab="dip" onclick="switchTab('dip')">Dip-Käufer-Backtest</button>
+    <button class="tabbtn" data-tab="stress" onclick="switchTab('stress')">5J-Entnahme-Stresstest</button>
   </div>
 
-  <div id="resultsArea" style="display:none">
-    <div class="pitch-box" id="pitchBox"></div>
-    <div class="result-grid" id="resultGrid"></div>
+  <div class="tabpanel active" id="tab-dip">
     <div class="panel">
-      <h2>Kursverlauf &amp; Nachkauf-Zeitpunkte</h2>
-      <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+      <h2>Simulation einrichten</h2>
+      <div class="ctrl-grid">
+        <div>
+          <label>Unternehmen</label>
+          <select id="symbolSelect"><option>Lade Firmenliste...</option></select>
+        </div>
+        <div>
+          <label>Startkapital (€)</label>
+          <input type="number" id="capitalInput" value="10000" min="100" step="500">
+        </div>
+        <div>
+          <label>Dip-Schwelle (Rücksetzer ab Allzeithoch)</label>
+          <select id="dipThresholdSelect">
+            <option value="5">5%</option>
+            <option value="10" selected>10%</option>
+            <option value="15">15%</option>
+            <option value="20">20%</option>
+          </select>
+        </div>
+      </div>
+      <button class="run-btn" id="runBtn" onclick="runSimulation()">Simulation starten</button>
     </div>
-    <div class="panel">
-      <h2>Erkannte Dip-Käufe</h2>
-      <table class="events-table">
-        <thead><tr><th>Datum</th><th>Kurs</th><th>Rücksetzer vom Hoch</th><th>Investiert</th></tr></thead>
-        <tbody id="eventsBody"></tbody>
-      </table>
+
+    <div id="resultsArea" style="display:none">
+      <div class="pitch-box" id="pitchBox"></div>
+      <div class="result-grid" id="resultGrid"></div>
+      <div class="panel">
+        <h2>Kursverlauf &amp; Nachkauf-Zeitpunkte</h2>
+        <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>Erkannte Dip-Käufe</h2>
+        <table class="events-table">
+          <thead><tr><th>Datum</th><th>Kurs</th><th>Rücksetzer vom Hoch</th><th>Investiert</th></tr></thead>
+          <tbody id="eventsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="disclaimer">
+      Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; Nachkäufe werden aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital) — alle drei Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. Mindestabstand von 4 Wochen zwischen zwei Dip-Käufen, maximal 10 Dip-Käufe pro Simulation; nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
     </div>
   </div>
 
-  <div class="disclaimer">
-    Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; Nachkäufe werden aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital) — alle drei Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. Mindestabstand von 4 Wochen zwischen zwei Dip-Käufen, maximal 10 Dip-Käufe pro Simulation; nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
+  <div class="tabpanel" id="tab-stress">
+    <div class="panel">
+      <h2>Stresstest einrichten</h2>
+      <div class="ctrl-grid">
+        <div>
+          <label>Unternehmen</label>
+          <select id="stressSymbolSelect"><option>Lade Firmenliste...</option></select>
+        </div>
+        <div>
+          <label>Startkapital (€)</label>
+          <input type="number" id="stressCapitalInput" value="100000" min="1000" step="5000">
+        </div>
+        <div>
+          <label>Entnahmerate p.a.</label>
+          <select id="stressRateSelect"><option value="4">4%</option><option value="5" selected>5%</option><option value="6">6%</option></select>
+        </div>
+        <div>
+          <label>Entnahme-Horizont</label>
+          <select id="stressHorizonSelect"><option value="1">1 Jahr</option><option value="2" selected>2 Jahre</option><option value="3">3 Jahre</option></select>
+        </div>
+      </div>
+      <button class="run-btn" onclick="runStressTest()">Stresstest starten</button>
+    </div>
+    <div id="stressResultsArea" style="display:none">
+      <div class="pitch-box" id="stressPitchBox"></div>
+      <div class="result-grid" id="stressResultGrid"></div>
+      <div class="panel">
+        <h2>Endkapital je historischem Startzeitpunkt</h2>
+        <div class="chart-wrap"><canvas id="stressChart"></canvas></div>
+      </div>
+    </div>
+    <div class="disclaimer">
+      <b>Wichtig:</b> es stehen nur 5 Jahre Kurshistorie zur Verfügung — dies ist <b>kein</b> 20-30-Jahre-Renten-Modell, sondern ein kurzfristiger "Sequence-of-Returns-Risk"-Test: Was wäre passiert, hätte die Entnahme zu unterschiedlichen Zeitpunkten innerhalb der verfügbaren 5 Jahre begonnen? Jede der ~250 wöchentlichen Startmöglichkeiten wird historisch nachgespielt (keine Monte-Carlo-Simulation): feste wöchentliche Entnahme (Startkapital × Rate ÷ 52), Restkapital entwickelt sich mit dem "Adjusted Close" (Dividenden reinvestiert) weiter. "Kapital aufgebraucht" = Depot wäre während des Horizonts auf 0 gefallen. Reine Cache-Auswertung, keine Live-Kurse, keine Anlageberatung.
+    </div>
   </div>
 </div>
 <script>
@@ -111,6 +159,12 @@
   let nameMap = {};
   let chartInstance = null;
   let lastRun = null;
+  let stressChartInstance = null;
+
+  window.switchTab = function(tab){
+    document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+    document.querySelectorAll('.tabpanel').forEach(p=>p.classList.toggle('active', p.id==='tab-'+tab));
+  };
 
   async function loadData(){
     try{
@@ -120,10 +174,13 @@
       priceHist = await pRes.json();
       Object.entries(bilanz).forEach(([sym,d])=>{ if(d.name) nameMap[sym]=d.name; });
       const symbols = Object.keys(priceHist).filter(s=>priceHist[s].series && priceHist[s].series.length>50).sort((a,b)=>(nameMap[a]||a).localeCompare(nameMap[b]||b));
+      const optionsHtml = symbols.map(s=>`<option value="${s}">${nameMap[s]||s} (${s})</option>`).join('');
       const sel = document.getElementById('symbolSelect');
-      sel.innerHTML = symbols.map(s=>`<option value="${s}">${nameMap[s]||s} (${s})</option>`).join('');
+      sel.innerHTML = optionsHtml;
+      const stressSel = document.getElementById('stressSymbolSelect');
+      stressSel.innerHTML = optionsHtml;
       const koIdx = symbols.indexOf('KO');
-      if(koIdx>=0) sel.value='KO';
+      if(koIdx>=0){ sel.value='KO'; stressSel.value='KO'; }
       document.getElementById('cacheBadge').textContent = `● ${symbols.length} Firmen bereit`;
     }catch(e){
       document.getElementById('cacheBadge').textContent = '● Fehler';
@@ -250,6 +307,64 @@
       },
     });
   }
+
+  // ---- 5J-Entnahme-Stresstest: literal historical rolling-window replay ----
+  window.runStressTest = function(){
+    const symbol = document.getElementById('stressSymbolSelect').value;
+    const capital = parseFloat(document.getElementById('stressCapitalInput').value) || 100000;
+    const ratePct = parseFloat(document.getElementById('stressRateSelect').value);
+    const horizonYears = parseInt(document.getElementById('stressHorizonSelect').value);
+    if(!priceHist[symbol]) return;
+    const series = priceHist[symbol].series;
+    const n = series.length;
+    const horizonWeeks = horizonYears * 52;
+    const weeklyWithdrawal = capital * (ratePct/100) / 52;
+    if(horizonWeeks >= n){ document.getElementById('stressPitchBox').innerHTML = 'Nicht genug Kurshistorie für diesen Horizont.'; return; }
+
+    const scenarios = [];
+    for(let start=0; start+horizonWeeks < n; start++){
+      let cap = capital, depleted = false, depletionWeek = null;
+      for(let w=start; w<start+horizonWeeks; w++){
+        const growthFactor = series[w+1][2] / series[w][2];
+        cap = cap*growthFactor - weeklyWithdrawal;
+        if(cap <= 0 && !depleted){ depleted = true; depletionWeek = w-start; cap = 0; }
+      }
+      scenarios.push({ startDate: series[start][0], finalCapital: cap, depleted, depletionWeek });
+    }
+
+    const nDepleted = scenarios.filter(s=>s.depleted).length;
+    const best = scenarios.reduce((a,b)=> b.finalCapital>a.finalCapital?b:a);
+    const worst = scenarios.reduce((a,b)=> b.finalCapital<a.finalCapital?b:a);
+    const name = nameMap[symbol] || symbol;
+
+    document.getElementById('stressResultsArea').style.display = 'block';
+    document.getElementById('stressPitchBox').innerHTML = nDepleted>0
+      ? `Bei <b>${name}</b> hätten <b>${nDepleted} von ${scenarios.length}</b> historisch möglichen Startzeitpunkten (${(nDepleted/scenarios.length*100).toFixed(0)}%) im ${horizonYears}-Jahres-Fenster zu einem <b>aufgebrauchten Depot</b> bei ${ratePct}% Entnahmerate geführt. Schlechtester Start: ${worst.startDate}.`
+      : `Bei <b>${name}</b> hätte in keinem der ${scenarios.length} historisch möglichen Startzeitpunkte das Depot bei ${ratePct}% Entnahmerate über ${horizonYears} Jahre aufgebraucht werden können — schlechtester Endwert trotzdem ${fmtEUR(worst.finalCapital)} (Start ${worst.startDate}).`;
+
+    document.getElementById('stressResultGrid').innerHTML = `
+      <div class="result-card"><div class="result-title">Bestes Szenario</div><div class="result-val" style="color:var(--green)">${fmtEUR(best.finalCapital)}</div><div class="result-sub">Start ${best.startDate}</div></div>
+      <div class="result-card ${worst.depleted?'warn-card':''}"><div class="result-title">Schlechtestes Szenario</div><div class="result-val" style="color:${worst.depleted?'var(--red)':'var(--bright)'}">${worst.depleted?'Aufgebraucht':fmtEUR(worst.finalCapital)}</div><div class="result-sub">Start ${worst.startDate}</div></div>
+      <div class="result-card"><div class="result-title">Ausfallquote</div><div class="result-val" style="color:${nDepleted>0?'var(--red)':'var(--green)'}">${(nDepleted/scenarios.length*100).toFixed(0)}%</div><div class="result-sub">${nDepleted} von ${scenarios.length} Startpunkten</div></div>
+    `;
+
+    const ctx = document.getElementById('stressChart').getContext('2d');
+    if(stressChartInstance) stressChartInstance.destroy();
+    const isDark = document.documentElement.classList.contains('dark-theme');
+    const textColor = isDark ? '#7d92a8' : '#52606d';
+    const gridColor = isDark ? 'rgba(125,146,168,0.15)' : 'rgba(82,96,109,0.12)';
+    stressChartInstance = new Chart(ctx, {
+      type:'line',
+      data:{ labels: scenarios.map(s=>s.startDate), datasets:[{
+        label:'Endkapital nach '+horizonYears+'J, je Startdatum', data: scenarios.map(s=>s.finalCapital),
+        borderColor:'#0e7490', backgroundColor:'rgba(14,116,144,0.1)', fill:true, borderWidth:1.5, pointRadius:0, tension:0.1,
+      }]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{labels:{color:textColor}} },
+        scales:{ x:{ ticks:{color:textColor, maxTicksLimit:10}, grid:{color:gridColor} }, y:{ ticks:{color:textColor, callback:v=>fmtEUR(v)}, grid:{color:gridColor} } },
+      },
+    });
+  };
 
   loadData();
 </script>

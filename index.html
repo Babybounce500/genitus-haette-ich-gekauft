@@ -129,11 +129,11 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
         </div>
         <div>
           <label>Entnahmerate p.a.</label>
-          <select id="stressRateSelect"><option value="4">4%</option><option value="5" selected>5%</option><option value="6">6%</option></select>
+          <select id="stressRateSelect"><option value="2">2%</option><option value="3">3%</option><option value="4">4%</option><option value="5" selected>5%</option><option value="6">6%</option><option value="7">7%</option><option value="8">8%</option><option value="10">10%</option></select>
         </div>
         <div>
           <label>Entnahme-Horizont</label>
-          <select id="stressHorizonSelect"><option value="1">1 Jahr</option><option value="2" selected>2 Jahre</option><option value="3">3 Jahre</option></select>
+          <select id="stressHorizonSelect"><option value="1">1 Jahr</option><option value="2" selected>2 Jahre</option><option value="3">3 Jahre</option><option value="4">4 Jahre</option><option value="5">5 Jahre (Maximum — kaum Startpunkte übrig)</option></select>
         </div>
       </div>
       <button class="run-btn" onclick="runStressTest()">Stresstest starten</button>
@@ -147,7 +147,7 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
       </div>
     </div>
     <div class="disclaimer">
-      <b>Wichtig:</b> es stehen nur 5 Jahre Kurshistorie zur Verfügung — dies ist <b>kein</b> 20-30-Jahre-Renten-Modell, sondern ein kurzfristiger "Sequence-of-Returns-Risk"-Test: Was wäre passiert, hätte die Entnahme zu unterschiedlichen Zeitpunkten innerhalb der verfügbaren 5 Jahre begonnen? Jede der ~250 wöchentlichen Startmöglichkeiten wird historisch nachgespielt (keine Monte-Carlo-Simulation): feste wöchentliche Entnahme (Startkapital × Rate ÷ 52), Restkapital entwickelt sich mit dem "Adjusted Close" (Dividenden reinvestiert) weiter. "Kapital aufgebraucht" = Depot wäre während des Horizonts auf 0 gefallen. Reine Cache-Auswertung, keine Live-Kurse, keine Anlageberatung.
+      <b>Wichtig:</b> es stehen nur 5 Jahre Kurshistorie zur Verfügung — dies ist <b>kein</b> 20-30-Jahre-Renten-Modell, sondern ein kurzfristiger "Sequence-of-Returns-Risk"-Test: Was wäre passiert, hätte die Entnahme zu unterschiedlichen Zeitpunkten innerhalb der verfügbaren 5 Jahre begonnen? 10/15/20-Jahres-Horizonte sind mit den aktuell gecachten Daten technisch nicht möglich — das würde eine neue, viel längere Kurshistorie pro Firma erfordern (zusätzliche Live-Abfragen), nicht nur eine Oberflächenänderung. Bei 4-5 Jahren Horizont bleiben entsprechend kaum noch verschiedene Startpunkte übrig (im Extremfall nur 1-2) — das Tool weist das als Warnung aus, sobald die Stichprobe zu klein für eine echte Verteilung wird. Jede historisch mögliche wöchentliche Startmöglichkeit wird nachgespielt (keine Monte-Carlo-Simulation): feste wöchentliche Entnahme (Startkapital × Rate ÷ 52), Restkapital entwickelt sich mit dem "Adjusted Close" (Dividenden reinvestiert) weiter. "Kapital aufgebraucht" = Depot wäre während des Horizonts auf 0 gefallen. Reine Cache-Auswertung, keine Live-Kurse, keine Anlageberatung.
     </div>
   </div>
 </div>
@@ -420,9 +420,12 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
     const name = nameMap[symbol] || symbol;
 
     document.getElementById('stressResultsArea').style.display = 'block';
-    document.getElementById('stressPitchBox').innerHTML = nDepleted>0
+    const lowSampleWarning = scenarios.length < 10
+      ? `<div class="warn" style="margin-top:8px">⚠ Nur ${scenarios.length} historische(r) Startpunkt(e) möglich bei ${horizonYears} Jahren Horizont auf nur 5 Jahren Kursdaten — keine echte Verteilung, nur ${scenarios.length===1?'ein einziges':'wenige'} konkrete(s) Szenario(s). Für belastbare Stresstests über lange Horizonte eher 1-3 Jahre wählen.</div>`
+      : '';
+    document.getElementById('stressPitchBox').innerHTML = (nDepleted>0
       ? `Bei <b>${name}</b> hätten <b>${nDepleted} von ${scenarios.length}</b> historisch möglichen Startzeitpunkten (${(nDepleted/scenarios.length*100).toFixed(0)}%) im ${horizonYears}-Jahres-Fenster zu einem <b>aufgebrauchten Depot</b> bei ${ratePct}% Entnahmerate geführt. Schlechtester Start: ${worst.startDate}.`
-      : `Bei <b>${name}</b> hätte in keinem der ${scenarios.length} historisch möglichen Startzeitpunkte das Depot bei ${ratePct}% Entnahmerate über ${horizonYears} Jahre aufgebraucht werden können — schlechtester Endwert trotzdem ${fmtEUR(worst.finalCapital)} (Start ${worst.startDate}).`;
+      : `Bei <b>${name}</b> hätte in keinem der ${scenarios.length} historisch möglichen Startzeitpunkte das Depot bei ${ratePct}% Entnahmerate über ${horizonYears} Jahre aufgebraucht werden können — schlechtester Endwert trotzdem ${fmtEUR(worst.finalCapital)} (Start ${worst.startDate}).`) + lowSampleWarning;
 
     document.getElementById('stressResultGrid').innerHTML = `
       <div class="result-card"><div class="result-title">Bestes Szenario</div><div class="result-val" style="color:var(--green)">${fmtEUR(best.finalCapital)}</div><div class="result-sub">Start ${best.startDate}</div></div>

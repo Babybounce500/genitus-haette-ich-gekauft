@@ -104,7 +104,7 @@
     </div>
 
     <div class="disclaimer">
-      Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; Nachkäufe werden aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital) — alle drei Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. Mindestabstand von 4 Wochen zwischen zwei Dip-Käufen, maximal 10 Dip-Käufe pro Simulation; nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. <b>Max Drawdown</b> je Strategie bezieht sich auf den tatsächlichen Depotwert über die Zeit (nicht den reinen Kurs) — Sparplan und Dip-Käufer haben anfangs weniger Kapital investiert, daher kann ihr €-Drawdown bei einem frühen Crash kleiner ausfallen als der reine Kursrückgang. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
+Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. <b>Sparplan</b> investiert einmal pro Kalendermonat (nicht pro Woche) einen festen Betrag — dieser Betrag ergibt sich aus Startkapital ÷ Anzahl Monate im Fenster (exakter Betrag steht unter der jeweiligen Karte), sodass über die komplette Laufzeit exakt dieselbe Gesamtsumme investiert wird wie bei Einmalanlage und Dip-Käufer. Die Basis-Komponente des Dip-Käufers (50% des Kapitals) läuft nach demselben monatlichen Rhythmus; nur die Dip-Erkennung selbst prüft weiterhin jede Woche, da ein Rücksetzer jederzeit auftreten kann. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; Nachkäufe werden aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital) — alle drei Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. Mindestabstand von 4 Wochen zwischen zwei Dip-Käufen, maximal 10 Dip-Käufe pro Simulation; nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. <b>Max Drawdown</b> je Strategie bezieht sich auf den tatsächlichen Depotwert über die Zeit (nicht den reinen Kurs) — Sparplan und Dip-Käufer haben anfangs weniger Kapital investiert, daher kann ihr €-Drawdown bei einem frühen Crash kleiner ausfallen als der reine Kursrückgang. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
     </div>
   </div>
 
@@ -205,22 +205,38 @@
     const n = series.length;
     const firstAdj = series[0][2], lastAdj = series[n-1][2];
 
+    // Realistic Sparplan rhythm: once per CALENDAR MONTH (first available
+    // weekly data point in each new YYYY-MM), not per week -- the fixed
+    // monthly amount is derived as capital/numMonths so the Sparplan still
+    // invests the exact same total capital as the other two strategies
+    // over the same 5-year window, just spread monthly instead of weekly.
+    const monthWeeks = []; let lastMonthKey = null;
+    for(let i=0;i<n;i++){
+      const mk = series[i][0].slice(0,7);
+      if(mk !== lastMonthKey){ monthWeeks.push(i); lastMonthKey = mk; }
+    }
+    const numMonths = monthWeeks.length;
+    const monthSet = new Set(monthWeeks);
+    const monthlyTranche = capital / numMonths;
+
     // Strategy 1: Lump sum at start
     const unitsLump = capital / firstAdj;
     const valueLump = unitsLump * lastAdj;
     const ddLump = ddTracker();
     for(let i=0;i<n;i++) ddLump.update(unitsLump * series[i][2]);
 
-    // Strategy 2: Plain weekly DCA across whole window
-    const tranche = capital / n;
+    // Strategy 2: Monthly Sparplan across whole window
     let unitsDCA = 0;
     const ddDCA = ddTracker();
-    for(let i=0;i<n;i++){ unitsDCA += tranche / series[i][2]; ddDCA.update(unitsDCA * series[i][2]); }
+    for(let i=0;i<n;i++){
+      if(monthSet.has(i)) unitsDCA += monthlyTranche / series[i][2];
+      ddDCA.update(unitsDCA * series[i][2]);
+    }
     const valueDCA = unitsDCA * lastAdj;
 
-    // Strategy 3: Dip-buyer -- 50% base DCA + 50% reserved for dip events
+    // Strategy 3: Dip-buyer -- 50% monthly base Sparplan + 50% reserved for dip events
     const baseBudget = capital * 0.5, dipBudget = capital * 0.5;
-    const baseTranche = baseBudget / n;
+    const baseMonthlyTranche = baseBudget / numMonths;
     const MAX_DIP_EVENTS = 10, MIN_GAP_WEEKS = 4;
     const dipTranche = dipBudget / MAX_DIP_EVENTS;
     let unitsDip = 0, peak = series[0][1], dipEventsUsed = 0, lastDipWeek = -999;
@@ -228,7 +244,7 @@
     const events = [];
     for(let i=0;i<n;i++){
       const close = series[i][1], adj = series[i][2];
-      unitsDip += baseTranche / adj;
+      if(monthSet.has(i)) unitsDip += baseMonthlyTranche / adj;
       if(close > peak) peak = close;
       const drawdown = (peak - close) / peak * 100;
       if(drawdown >= dipThresholdPct && dipEventsUsed < MAX_DIP_EVENTS && (i - lastDipWeek) >= MIN_GAP_WEEKS){
@@ -247,10 +263,10 @@
     const valueDip = unitsDip * lastAdj;
 
     return {
-      symbol, series, years: priceHist[symbol].summary.years,
+      symbol, series, years: priceHist[symbol].summary.years, weeks: n, numMonths,
       lump: { value: valueLump, returnPct: (valueLump/capital-1)*100, maxDrawdown: ddLump.get() },
-      dca: { value: valueDCA, returnPct: (valueDCA/capital-1)*100, maxDrawdown: ddDCA.get() },
-      dip: { value: valueDip, returnPct: (valueDip/capital-1)*100, maxDrawdown: ddDip.get() },
+      dca: { value: valueDCA, returnPct: (valueDCA/capital-1)*100, maxDrawdown: ddDCA.get(), tranche: monthlyTranche },
+      dip: { value: valueDip, returnPct: (valueDip/capital-1)*100, maxDrawdown: ddDip.get(), baseTranche: baseMonthlyTranche, dipTranche, dipEventsUsed },
       events, capital, dipThresholdPct,
     };
   }
@@ -275,9 +291,9 @@
       : `Bei ${name} hätte in diesem ${r.years}-Jahres-Fenster eine Einmalanlage am Start (${fmtEUR(r.lump.value)}) den Dip-Käufer-Ansatz (${fmtEUR(r.dip.value)}) leicht übertroffen — nicht jede Aktie belohnt Nachkäufe gleich stark, das Timing der Rücksetzer entscheidet.`;
 
     const cards = [
-      { key:'lump', title:'Einmalanlage am Start', r:r.lump },
-      { key:'dca', title:'Sparplan (wöchentlich)', r:r.dca },
-      { key:'dip', title:`Dip-Käufer (ab -${r.dipThresholdPct}%)`, r:r.dip },
+      { key:'lump', title:'Einmalanlage am Start', r:r.lump, mechanics: `${fmtEUR(r.capital)} auf einen Schlag, Monat 1` },
+      { key:'dca', title:'Sparplan (monatlich)', r:r.dca, mechanics: `${r.dca.tranche.toFixed(2)} € in jedem der ${r.numMonths} Monate = ${fmtEUR(r.capital)} gesamt` },
+      { key:'dip', title:`Dip-Käufer (ab -${r.dipThresholdPct}%)`, r:r.dip, mechanics: `${r.dip.baseTranche.toFixed(2)} €/Monat Basis + ${r.dip.dipEventsUsed}× ${r.dip.dipTranche.toFixed(2)} € bei Rücksetzern` },
     ];
     document.getElementById('resultGrid').innerHTML = cards.map(c=>`
       <div class="result-card ${c.r===best?'winner':''}">
@@ -285,6 +301,7 @@
         <div class="result-val">${fmtEUR(c.r.value)}</div>
         <div class="result-sub ${c.r.returnPct>=0?'pos':'neg'}">${fmtPct(c.r.returnPct)}</div>
         <div class="result-sub" style="color:var(--red);font-size:11px;margin-top:2px">Max Drawdown: -${c.r.maxDrawdown.toFixed(1)}%</div>
+        <div class="result-sub" style="color:var(--muted);font-size:10px;margin-top:6px;line-height:1.4">${c.mechanics}</div>
         ${c.r===best?'<div class="crown">★ BESTE STRATEGIE</div>':''}
       </div>
     `).join('');

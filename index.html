@@ -111,7 +111,7 @@
     </div>
 
     <div class="disclaimer">
-Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. <b>Sparplan</b> investiert einmal pro Kalendermonat (nicht pro Woche) einen festen Betrag — dieser Betrag ergibt sich aus Startkapital ÷ Anzahl Monate im Fenster (exakter Betrag steht unter der jeweiligen Karte), sodass über die komplette Laufzeit exakt dieselbe Gesamtsumme investiert wird wie bei Einmalanlage und Dip-Käufer. Die Basis-Komponente des Dip-Käufers (50% des Kapitals) läuft nach demselben monatlichen Rhythmus; nur die Dip-Erkennung selbst prüft weiterhin jede Woche, da ein Rücksetzer jederzeit auftreten kann. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; beim Dip-Käufer werden Nachkäufe aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital), maximal 10 Dip-Käufe mit mind. 4 Wochen Abstand, nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. <b>Hodler</b> geht noch weiter: kein Basis-Sparplan, keine Obergrenze — das komplette Kapital wird gleichmäßig auf <i>alle</i> in diesem Fenster erkannten Rücksetzer verteilt (wie viele das sind, ergibt sich erst aus der tatsächlichen Kurshistorie dieser Aktie) und danach gehalten; gab es keinen einzigen Rücksetzer über der Schwelle, wird das gesamte Kapital ersatzweise am letzten Tag des Fensters investiert. Alle vier Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. <b>Max Drawdown</b> je Strategie bezieht sich auf den tatsächlichen Depotwert über die Zeit (nicht den reinen Kurs) — Strategien mit anfangs weniger investiertem Kapital können bei einem frühen Crash einen kleineren €-Drawdown zeigen als der reine Kursrückgang. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
+Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. <b>Sparplan</b> investiert einmal pro Kalendermonat (nicht pro Woche) einen festen Betrag — dieser Betrag ergibt sich aus Startkapital ÷ Anzahl Monate im Fenster (exakter Betrag steht unter der jeweiligen Karte), sodass über die komplette Laufzeit exakt dieselbe Gesamtsumme investiert wird wie bei Einmalanlage und Dip-Käufer. Die Basis-Komponente des Dip-Käufers (nur noch 20% des Kapitals, bewusst niedrig) läuft nach demselben monatlichen Rhythmus; die restlichen 80% sind für Nachkäufe reserviert, verteilt auf bis zu 20 einzelne Rücksetzer (mind. 4 Wochen Abstand) — mehr Volumen auf mehr verschiedene Dips statt wenige große Tranchen. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; nicht abgerufenes Reservekapital (z.B. wenn weniger als 20 Rücksetzer auftraten) wird am Ende des Fensters investiert. <b>Hodler</b> geht noch weiter: kein Basis-Sparplan, keine Obergrenze — das komplette Kapital wird gleichmäßig auf <i>alle</i> in diesem Fenster erkannten Rücksetzer verteilt (wie viele das sind, ergibt sich erst aus der tatsächlichen Kurshistorie dieser Aktie) und danach gehalten; gab es keinen einzigen Rücksetzer über der Schwelle, bleibt das Kapital komplett uninvestiert in Cash (0% Rendite) — anders als beim Dip-Käufer gibt es hier keine Ersatz-Investition am Ende. Lump Sum, Sparplan und Dip-Käufer investieren immer exakt dieselbe Gesamtsumme; Hodler nur dann, wenn tatsächlich Rücksetzer auftraten. <b>Max Drawdown</b> je Strategie bezieht sich auf den tatsächlichen Depotwert über die Zeit (nicht den reinen Kurs) — Strategien mit anfangs weniger investiertem Kapital können bei einem frühen Crash einen kleineren €-Drawdown zeigen als der reine Kursrückgang. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
     </div>
   </div>
 
@@ -241,10 +241,13 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
     }
     const valueDCA = unitsDCA * lastAdj;
 
-    // Strategy 3: Dip-buyer -- 50% monthly base Sparplan + 50% reserved for dip events
-    const baseBudget = capital * 0.5, dipBudget = capital * 0.5;
+    // Strategy 3: Dip-buyer -- lower monthly base Sparplan (20%), more volume
+    // held back for dips (80%, spread across up to 20 separate dip events
+    // instead of 10) -- shifts the strategy closer to "mostly buy the dips"
+    // while still keeping a small recurring floor.
+    const baseBudget = capital * 0.2, dipBudget = capital * 0.8;
     const baseMonthlyTranche = baseBudget / numMonths;
-    const MAX_DIP_EVENTS = 10, MIN_GAP_WEEKS = 4;
+    const MAX_DIP_EVENTS = 20, MIN_GAP_WEEKS = 4;
     const dipTranche = dipBudget / MAX_DIP_EVENTS;
     let unitsDip = 0, peak = series[0][1], dipEventsUsed = 0, lastDipWeek = -999;
     const ddDip = ddTracker();
@@ -300,13 +303,11 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
         }
         ddHodler.update(unitsHodler * series[i][2]);
       }
-    } else {
-      // No dip ever crossed the threshold in this window -- all capital
-      // deploys at the final week (never invested = never drawn down before that).
-      unitsHodler = capital / lastAdj;
-      ddHodler.update(unitsHodler * lastAdj);
     }
-    const valueHodler = unitsHodler * lastAdj;
+    // No forced fallback purchase: if no dip ever crossed the threshold,
+    // unitsHodler stays 0 -- the capital simply never got deployed and sits
+    // in cash. Value equals the original capital, 0% return, 0% drawdown.
+    const valueHodler = numHodlerDips > 0 ? unitsHodler * lastAdj : capital;
 
     return {
       symbol, series, years: priceHist[symbol].summary.years, weeks: n, numMonths,
@@ -341,7 +342,7 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
       { key:'lump', title:'Einmalanlage am Start', r:r.lump, mechanics: `${fmtEUR(r.capital)} auf einen Schlag, Monat 1` },
       { key:'dca', title:'Sparplan (monatlich)', r:r.dca, mechanics: `${r.dca.tranche.toFixed(2)} € in jedem der ${r.numMonths} Monate = ${fmtEUR(r.capital)} gesamt` },
       { key:'dip', title:`Dip-Käufer (ab -${r.dipThresholdPct}%)`, r:r.dip, mechanics: `${r.dip.baseTranche.toFixed(2)} €/Monat Basis + ${r.dip.dipEventsUsed}× ${r.dip.dipTranche.toFixed(2)} € bei Rücksetzern` },
-      { key:'hodler', title:`Hodler (alle Dips, ab -${r.dipThresholdPct}%)`, r:r.hodler, mechanics: r.hodler.numDips>0 ? `Kein Basis-Sparplan — ${fmtEUR(r.capital)} auf ${r.hodler.numDips} Rücksetzer verteilt (je ${r.hodler.tranche.toFixed(2)} €), dann gehalten` : `Keine Rücksetzer ≥${r.dipThresholdPct}% in diesem Fenster — ${fmtEUR(r.capital)} komplett am letzten Tag investiert` },
+      { key:'hodler', title:`Hodler (alle Dips, ab -${r.dipThresholdPct}%)`, r:r.hodler, mechanics: r.hodler.numDips>0 ? `Kein Basis-Sparplan — ${fmtEUR(r.capital)} auf ${r.hodler.numDips} Rücksetzer verteilt (je ${r.hodler.tranche.toFixed(2)} €), dann gehalten` : `Keine Rücksetzer ≥${r.dipThresholdPct}% in diesem Fenster — ${fmtEUR(r.capital)} bleibt komplett uninvestiert in Cash (0% Rendite)` },
     ];
     document.getElementById('resultGrid').innerHTML = cards.map(c=>`
       <div class="result-card ${c.r===best?'winner':''}">

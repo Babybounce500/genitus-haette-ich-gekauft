@@ -26,8 +26,9 @@
     select,input[type="number"],input[type="text"]{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:9px 10px;outline:none;border-radius:4px;}
     button.run-btn{background:var(--accent);border:none;color:#fff;font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:11px 24px;border-radius:4px;cursor:pointer;}
     button.run-btn:hover{opacity:.88;}
-    .result-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px;}
-    @media (max-width:700px){.result-grid{grid-template-columns:1fr;}}
+    .result-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+    @media (max-width:900px){.result-grid{grid-template-columns:repeat(2,1fr);}}
+    @media (max-width:500px){.result-grid{grid-template-columns:1fr;}}
     .result-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px;text-align:center;}
     .result-card.winner{border-color:var(--green);box-shadow:0 0 0 1px var(--green) inset;}
     .result-title{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;}
@@ -104,7 +105,7 @@
     </div>
 
     <div class="disclaimer">
-Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. <b>Sparplan</b> investiert einmal pro Kalendermonat (nicht pro Woche) einen festen Betrag — dieser Betrag ergibt sich aus Startkapital ÷ Anzahl Monate im Fenster (exakter Betrag steht unter der jeweiligen Karte), sodass über die komplette Laufzeit exakt dieselbe Gesamtsumme investiert wird wie bei Einmalanlage und Dip-Käufer. Die Basis-Komponente des Dip-Käufers (50% des Kapitals) läuft nach demselben monatlichen Rhythmus; nur die Dip-Erkennung selbst prüft weiterhin jede Woche, da ein Rücksetzer jederzeit auftreten kann. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; Nachkäufe werden aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital) — alle drei Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. Mindestabstand von 4 Wochen zwischen zwei Dip-Käufen, maximal 10 Dip-Käufe pro Simulation; nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. <b>Max Drawdown</b> je Strategie bezieht sich auf den tatsächlichen Depotwert über die Zeit (nicht den reinen Kurs) — Sparplan und Dip-Käufer haben anfangs weniger Kapital investiert, daher kann ihr €-Drawdown bei einem frühen Crash kleiner ausfallen als der reine Kursrückgang. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
+Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. <b>Sparplan</b> investiert einmal pro Kalendermonat (nicht pro Woche) einen festen Betrag — dieser Betrag ergibt sich aus Startkapital ÷ Anzahl Monate im Fenster (exakter Betrag steht unter der jeweiligen Karte), sodass über die komplette Laufzeit exakt dieselbe Gesamtsumme investiert wird wie bei Einmalanlage und Dip-Käufer. Die Basis-Komponente des Dip-Käufers (50% des Kapitals) läuft nach demselben monatlichen Rhythmus; nur die Dip-Erkennung selbst prüft weiterhin jede Woche, da ein Rücksetzer jederzeit auftreten kann. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; beim Dip-Käufer werden Nachkäufe aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital), maximal 10 Dip-Käufe mit mind. 4 Wochen Abstand, nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. <b>Hodler</b> geht noch weiter: kein Basis-Sparplan, keine Obergrenze — das komplette Kapital wird gleichmäßig auf <i>alle</i> in diesem Fenster erkannten Rücksetzer verteilt (wie viele das sind, ergibt sich erst aus der tatsächlichen Kurshistorie dieser Aktie) und danach gehalten; gab es keinen einzigen Rücksetzer über der Schwelle, wird das gesamte Kapital ersatzweise am letzten Tag des Fensters investiert. Alle vier Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. <b>Max Drawdown</b> je Strategie bezieht sich auf den tatsächlichen Depotwert über die Zeit (nicht den reinen Kurs) — Strategien mit anfangs weniger investiertem Kapital können bei einem frühen Crash einen kleineren €-Drawdown zeigen als der reine Kursrückgang. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
     </div>
   </div>
 
@@ -262,11 +263,51 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
     }
     const valueDip = unitsDip * lastAdj;
 
+    // Strategy 4: Hodler -- NO base Sparplan at all, 100% of capital reserved
+    // for dip-buying, UNCAPPED (every detected dip gets bought, not just the
+    // first 10) -- the tranche size falls out of however many dips actually
+    // occurred in this specific window, so the full capital always ends up
+    // spread evenly across all of them, then held.
+    let peakH = series[0][1], lastDipWeekH = -999;
+    const hodlerDipWeeks = [];
+    for(let i=0;i<n;i++){
+      const close = series[i][1];
+      if(close > peakH) peakH = close;
+      const dd = (peakH - close) / peakH * 100;
+      if(dd >= dipThresholdPct && (i - lastDipWeekH) >= MIN_GAP_WEEKS){
+        hodlerDipWeeks.push(i); lastDipWeekH = i;
+      }
+    }
+    const numHodlerDips = hodlerDipWeeks.length;
+    const ddHodler = ddTracker();
+    let unitsHodler = 0, hodlerTranche = null;
+    const hodlerEvents = [];
+    if(numHodlerDips > 0){
+      hodlerTranche = capital / numHodlerDips;
+      const hodlerDipSet = new Set(hodlerDipWeeks);
+      let peakForLog = series[0][1];
+      for(let i=0;i<n;i++){
+        if(series[i][1] > peakForLog) peakForLog = series[i][1];
+        if(hodlerDipSet.has(i)){
+          unitsHodler += hodlerTranche / series[i][2];
+          hodlerEvents.push({ date: series[i][0], close: series[i][1], drawdown: (peakForLog-series[i][1])/peakForLog*100, amount: hodlerTranche });
+        }
+        ddHodler.update(unitsHodler * series[i][2]);
+      }
+    } else {
+      // No dip ever crossed the threshold in this window -- all capital
+      // deploys at the final week (never invested = never drawn down before that).
+      unitsHodler = capital / lastAdj;
+      ddHodler.update(unitsHodler * lastAdj);
+    }
+    const valueHodler = unitsHodler * lastAdj;
+
     return {
       symbol, series, years: priceHist[symbol].summary.years, weeks: n, numMonths,
       lump: { value: valueLump, returnPct: (valueLump/capital-1)*100, maxDrawdown: ddLump.get() },
       dca: { value: valueDCA, returnPct: (valueDCA/capital-1)*100, maxDrawdown: ddDCA.get(), tranche: monthlyTranche },
       dip: { value: valueDip, returnPct: (valueDip/capital-1)*100, maxDrawdown: ddDip.get(), baseTranche: baseMonthlyTranche, dipTranche, dipEventsUsed },
+      hodler: { value: valueHodler, returnPct: (valueHodler/capital-1)*100, maxDrawdown: ddHodler.get(), tranche: hodlerTranche, numDips: numHodlerDips, events: hodlerEvents },
       events, capital, dipThresholdPct,
     };
   }
@@ -284,7 +325,7 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
   function renderResults(r){
     document.getElementById('resultsArea').style.display = 'block';
     const name = nameMap[r.symbol] || r.symbol;
-    const best = [r.lump, r.dca, r.dip].reduce((a,b)=> b.value>a.value?b:a);
+    const best = [r.lump, r.dca, r.dip, r.hodler].reduce((a,b)=> b.value>a.value?b:a);
     const diffVsLump = r.dip.value - r.lump.value;
     document.getElementById('pitchBox').innerHTML = diffVsLump > 0
       ? `Hätten Sie vor ${r.years} Jahren <b>${fmtEUR(r.capital)}</b> in <b>${name}</b> investiert und bei jedem Rücksetzer von ${r.dipThresholdPct}% nachgekauft, stünden Sie heute bei <b>${fmtEUR(r.dip.value)}</b> — <b>${fmtEUR(diffVsLump)} mehr</b> als bei einer reinen Einmalanlage am selben Starttag.`
@@ -294,6 +335,7 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
       { key:'lump', title:'Einmalanlage am Start', r:r.lump, mechanics: `${fmtEUR(r.capital)} auf einen Schlag, Monat 1` },
       { key:'dca', title:'Sparplan (monatlich)', r:r.dca, mechanics: `${r.dca.tranche.toFixed(2)} € in jedem der ${r.numMonths} Monate = ${fmtEUR(r.capital)} gesamt` },
       { key:'dip', title:`Dip-Käufer (ab -${r.dipThresholdPct}%)`, r:r.dip, mechanics: `${r.dip.baseTranche.toFixed(2)} €/Monat Basis + ${r.dip.dipEventsUsed}× ${r.dip.dipTranche.toFixed(2)} € bei Rücksetzern` },
+      { key:'hodler', title:`Hodler (alle Dips, ab -${r.dipThresholdPct}%)`, r:r.hodler, mechanics: r.hodler.numDips>0 ? `Kein Basis-Sparplan — ${fmtEUR(r.capital)} auf ${r.hodler.numDips} Rücksetzer verteilt (je ${r.hodler.tranche.toFixed(2)} €), dann gehalten` : `Keine Rücksetzer ≥${r.dipThresholdPct}% in diesem Fenster — ${fmtEUR(r.capital)} komplett am letzten Tag investiert` },
     ];
     document.getElementById('resultGrid').innerHTML = cards.map(c=>`
       <div class="result-card ${c.r===best?'winner':''}">

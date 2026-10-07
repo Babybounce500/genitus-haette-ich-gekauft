@@ -104,7 +104,7 @@
     </div>
 
     <div class="disclaimer">
-      Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; Nachkäufe werden aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital) — alle drei Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. Mindestabstand von 4 Wochen zwischen zwei Dip-Käufen, maximal 10 Dip-Käufe pro Simulation; nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
+      Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjusted Close", der reinvestierte Dividenden bereits einpreist — Dividendenerträge sind in allen drei Strategien automatisch mit-reinvestiert. Dip-Erkennung basiert auf dem unbereinigten Schlusskurs relativ zum bisherigen Hoch im Fenster; Nachkäufe werden aus einem gleich großen reservierten Teilbudget finanziert (nicht zusätzliches Kapital) — alle drei Strategien investieren exakt dieselbe Gesamtsumme, damit der Vergleich fair ist. Mindestabstand von 4 Wochen zwischen zwei Dip-Käufen, maximal 10 Dip-Käufe pro Simulation; nicht abgerufenes Reservekapital wird am Ende des Fensters investiert. <b>Max Drawdown</b> je Strategie bezieht sich auf den tatsächlichen Depotwert über die Zeit (nicht den reinen Kurs) — Sparplan und Dip-Käufer haben anfangs weniger Kapital investiert, daher kann ihr €-Drawdown bei einem frühen Crash kleiner ausfallen als der reine Kursrückgang. Historische Simulation, keine Garantie für künftige Wiederholung, keine Anlageberatung — reine Cache-Auswertung, keine Live-Kurse.
     </div>
   </div>
 
@@ -191,6 +191,15 @@
   function fmtEUR(n){ return n.toLocaleString('de-DE',{maximumFractionDigits:0})+' €'; }
   function fmtPct(n){ return (n>=0?'+':'')+n.toFixed(1)+'%'; }
 
+  // Tracks peak-to-trough drawdown on the ACTUAL invested portfolio value
+  // over time (not just the raw price) -- a DCA/Dip-Käufer strategy has
+  // less capital exposed early on, so its real € drawdown during an early
+  // crash is smaller than the pure price drawdown, even on the same stock.
+  function ddTracker(){
+    let peak=0, maxDD=0;
+    return { update(value){ if(value>peak) peak=value; const dd = peak>0 ? (peak-value)/peak*100 : 0; if(dd>maxDD) maxDD=dd; return maxDD; }, get(){ return maxDD; } };
+  }
+
   function simulate(symbol, capital, dipThresholdPct){
     const series = priceHist[symbol].series; // [date, close, adjclose]
     const n = series.length;
@@ -199,11 +208,14 @@
     // Strategy 1: Lump sum at start
     const unitsLump = capital / firstAdj;
     const valueLump = unitsLump * lastAdj;
+    const ddLump = ddTracker();
+    for(let i=0;i<n;i++) ddLump.update(unitsLump * series[i][2]);
 
     // Strategy 2: Plain weekly DCA across whole window
     const tranche = capital / n;
     let unitsDCA = 0;
-    for(let i=0;i<n;i++) unitsDCA += tranche / series[i][2];
+    const ddDCA = ddTracker();
+    for(let i=0;i<n;i++){ unitsDCA += tranche / series[i][2]; ddDCA.update(unitsDCA * series[i][2]); }
     const valueDCA = unitsDCA * lastAdj;
 
     // Strategy 3: Dip-buyer -- 50% base DCA + 50% reserved for dip events
@@ -212,6 +224,7 @@
     const MAX_DIP_EVENTS = 10, MIN_GAP_WEEKS = 4;
     const dipTranche = dipBudget / MAX_DIP_EVENTS;
     let unitsDip = 0, peak = series[0][1], dipEventsUsed = 0, lastDipWeek = -999;
+    const ddDip = ddTracker();
     const events = [];
     for(let i=0;i<n;i++){
       const close = series[i][1], adj = series[i][2];
@@ -223,19 +236,21 @@
         dipEventsUsed++; lastDipWeek = i;
         events.push({ date: series[i][0], close, drawdown, amount: dipTranche });
       }
+      ddDip.update(unitsDip * adj);
     }
     if(dipEventsUsed < MAX_DIP_EVENTS){
       const leftover = (MAX_DIP_EVENTS - dipEventsUsed) * dipTranche;
       unitsDip += leftover / lastAdj;
       events.push({ date: series[n-1][0], close: series[n-1][1], drawdown: (peak-series[n-1][1])/peak*100, amount: leftover, leftover: true });
+      ddDip.update(unitsDip * lastAdj);
     }
     const valueDip = unitsDip * lastAdj;
 
     return {
       symbol, series, years: priceHist[symbol].summary.years,
-      lump: { value: valueLump, returnPct: (valueLump/capital-1)*100 },
-      dca: { value: valueDCA, returnPct: (valueDCA/capital-1)*100 },
-      dip: { value: valueDip, returnPct: (valueDip/capital-1)*100 },
+      lump: { value: valueLump, returnPct: (valueLump/capital-1)*100, maxDrawdown: ddLump.get() },
+      dca: { value: valueDCA, returnPct: (valueDCA/capital-1)*100, maxDrawdown: ddDCA.get() },
+      dip: { value: valueDip, returnPct: (valueDip/capital-1)*100, maxDrawdown: ddDip.get() },
       events, capital, dipThresholdPct,
     };
   }
@@ -269,6 +284,7 @@
         <div class="result-title">${c.title}</div>
         <div class="result-val">${fmtEUR(c.r.value)}</div>
         <div class="result-sub ${c.r.returnPct>=0?'pos':'neg'}">${fmtPct(c.r.returnPct)}</div>
+        <div class="result-sub" style="color:var(--red);font-size:11px;margin-top:2px">Max Drawdown: -${c.r.maxDrawdown.toFixed(1)}%</div>
         ${c.r===best?'<div class="crown">★ BESTE STRATEGIE</div>':''}
       </div>
     `).join('');

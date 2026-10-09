@@ -249,14 +249,24 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
     const baseMonthlyTranche = baseBudget / numMonths;
     const MAX_DIP_EVENTS = 20, MIN_GAP_WEEKS = 4;
     const dipTranche = dipBudget / MAX_DIP_EVENTS;
-    let unitsDip = 0, peak = series[0][1], dipEventsUsed = 0, lastDipWeek = -999;
+    // Peak/drawdown tracking for the dip TRIGGER uses the split-adjusted
+    // price (adj), not the raw nominal close -- a real stock split (e.g.
+    // NVDA 10:1 in 06/2024) would otherwise freeze "peak" at a stale,
+    // ten-times-too-high nominal level, making every single week after the
+    // split look like a fake 90%+ "dip" forever. Validated against real
+    // Rheinmetall data (10:1 split, 29.09.1997): the old raw-close version
+    // fired a bogus dip trigger every ~4 weeks from Oct. 1997 through at
+    // least Dec. 1999. Units bought (dipTranche/adj) were already correct;
+    // only the trigger itself was wrong. `close` is kept only for the
+    // on-screen event log, never for math.
+    let unitsDip = 0, peak = series[0][2], dipEventsUsed = 0, lastDipWeek = -999;
     const ddDip = ddTracker();
     const events = [];
     for(let i=0;i<n;i++){
       const close = series[i][1], adj = series[i][2];
       if(monthSet.has(i)) unitsDip += baseMonthlyTranche / adj;
-      if(close > peak) peak = close;
-      const drawdown = (peak - close) / peak * 100;
+      if(adj > peak) peak = adj;
+      const drawdown = (peak - adj) / peak * 100;
       if(drawdown >= dipThresholdPct && dipEventsUsed < MAX_DIP_EVENTS && (i - lastDipWeek) >= MIN_GAP_WEEKS){
         unitsDip += dipTranche / adj;
         dipEventsUsed++; lastDipWeek = i;
@@ -267,7 +277,7 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
     if(dipEventsUsed < MAX_DIP_EVENTS){
       const leftover = (MAX_DIP_EVENTS - dipEventsUsed) * dipTranche;
       unitsDip += leftover / lastAdj;
-      events.push({ date: series[n-1][0], close: series[n-1][1], drawdown: (peak-series[n-1][1])/peak*100, amount: leftover, leftover: true });
+      events.push({ date: series[n-1][0], close: series[n-1][1], drawdown: (peak-lastAdj)/peak*100, amount: leftover, leftover: true });
       ddDip.update(unitsDip * lastAdj);
     }
     const valueDip = unitsDip * lastAdj;
@@ -277,12 +287,14 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
     // first 10) -- the tranche size falls out of however many dips actually
     // occurred in this specific window, so the full capital always ends up
     // spread evenly across all of them, then held.
-    let peakH = series[0][1], lastDipWeekH = -999;
+    // Same fix as the Dip-Käufer trigger above: peak/drawdown tracked on the
+    // split-adjusted price, not the raw nominal close.
+    let peakH = series[0][2], lastDipWeekH = -999;
     const hodlerDipWeeks = [];
     for(let i=0;i<n;i++){
-      const close = series[i][1];
-      if(close > peakH) peakH = close;
-      const dd = (peakH - close) / peakH * 100;
+      const adj = series[i][2];
+      if(adj > peakH) peakH = adj;
+      const dd = (peakH - adj) / peakH * 100;
       if(dd >= dipThresholdPct && (i - lastDipWeekH) >= MIN_GAP_WEEKS){
         hodlerDipWeeks.push(i); lastDipWeekH = i;
       }
@@ -294,12 +306,12 @@ Simulation nutzt wöchentliche Kursdaten (5 Jahre, Yahoo Finance) und den "Adjus
     if(numHodlerDips > 0){
       hodlerTranche = capital / numHodlerDips;
       const hodlerDipSet = new Set(hodlerDipWeeks);
-      let peakForLog = series[0][1];
+      let peakForLog = series[0][2];
       for(let i=0;i<n;i++){
-        if(series[i][1] > peakForLog) peakForLog = series[i][1];
+        if(series[i][2] > peakForLog) peakForLog = series[i][2];
         if(hodlerDipSet.has(i)){
           unitsHodler += hodlerTranche / series[i][2];
-          hodlerEvents.push({ date: series[i][0], close: series[i][1], drawdown: (peakForLog-series[i][1])/peakForLog*100, amount: hodlerTranche });
+          hodlerEvents.push({ date: series[i][0], close: series[i][1], drawdown: (peakForLog-series[i][2])/peakForLog*100, amount: hodlerTranche });
         }
         ddHodler.update(unitsHodler * series[i][2]);
       }
